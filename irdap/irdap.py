@@ -1124,6 +1124,11 @@ def check_sort_data_create_directories(frames_to_remove=[],
         fh.write('%s' % [number_frames_Q, number_frames_U])
     printandlog('\nWrote file ' + os.path.join(path_preprocessed_dir, name_file_root + 'number_frames_QU.txt') + '.', wrap=False)
 
+    # Write the OBJECT DIT to a .txt-file
+    with open(os.path.join(path_preprocessed_dir, name_file_root + 'DIT.txt'), 'w') as fh:
+        fh.write('%s' % object_exposure_time)
+    printandlog('\nWrote file ' + os.path.join(path_preprocessed_dir, name_file_root + 'DIT.txt') + '.', wrap=False)
+
     return path_dark_files, path_flat_files, path_object_files, path_sky_files, path_center_files, \
            path_object_center_files, path_flux_files, path_sky_flux_files, \
            indices_to_remove_dark, indices_to_remove_flat, indices_to_remove_object, \
@@ -4949,10 +4954,12 @@ def compute_contrast(frame, filter_used, sigma_clip=True):
 ###############################################################################
 
 def plot_contrast_extended_source(path_table_star_flux, frame_I_Q, frame_I_U, frame_Q, frame_U,
-                                  filter_used, number_frames_Q, number_frames_U, QU_QUphi='QU',
+                                  filter_used, number_frames_Q, number_frames_U, 
+                                  object_exposure_time, QU_QUphi='QU',
                                   sigma_clip=True, star_flux_in_jansky=None):
     '''
     Plot the contrast curve for an extended source in contrast/arcsec^2 or Jansky/arcsec^2
+    and save the result in a csv file
 
     Input:
         path_table_star_flux: path to CSV-file with star flux data
@@ -4978,6 +4985,10 @@ def plot_contrast_extended_source(path_table_star_flux, frame_I_Q, frame_I_U, fr
     frame_Q = frame_Q * irdis_gain * number_frames_Q
     frame_U = frame_U * irdis_gain * number_frames_U
 
+    # Express the ron in total number of electrons per pixel
+    ron_Q_e_per_px = get_ron(object_exposure_time) * np.sqrt(number_frames_Q)
+    ron_U_e_per_px = get_ron(object_exposure_time) * np.sqrt(number_frames_U)
+    
     # Compute mean and standard deviations as a function of separation
     separation, I_Q_mean, _, fwhm = compute_contrast(frame=frame_I_Q, filter_used=filter_used, sigma_clip=sigma_clip)
     _, I_U_mean, _, _ = compute_contrast(frame=frame_I_U, filter_used=filter_used, sigma_clip=sigma_clip)
@@ -5021,6 +5032,10 @@ def plot_contrast_extended_source(path_table_star_flux, frame_I_Q, frame_I_U, fr
     Q_std = Q_std * star_flux_in_jansky / (reference_flux_Q * pixel_scale**2)
     U_std = U_std * star_flux_in_jansky / (reference_flux_U * pixel_scale**2)
 
+    # Express RON in contrast (or Jansky) per arcsec^2
+    ron_Q = ron_Q_e_per_px * star_flux_in_jansky / (reference_flux_Q * pixel_scale**2)
+    ron_U = ron_U_e_per_px * star_flux_in_jansky / (reference_flux_Q * pixel_scale**2)
+    
     # Compute separation in arcseconds
     separation_as = separation * pixel_scale
 
@@ -5055,6 +5070,8 @@ def plot_contrast_extended_source(path_table_star_flux, frame_I_Q, frame_I_U, fr
     plt.plot(separation_as, U_std, 'r-', label=r'$1\sigma$ ' + label_U)
     plt.plot(separation_as, photon_noise_I_Q, 'b:', label=r'photon noise $I_Q$')
     plt.plot(separation_as, photon_noise_I_U, 'r:', label=r'photon noise $I_U$')
+    plt.axhline(ron_Q,0,xlim_max,color='blue',linestyle='-.',label=r'RON noise $I_Q$')
+    plt.axhline(ron_U,0,xlim_max,color='red',linestyle='-.',label=r'RON noise $I_U$')
     plt.yscale('log')
     plt.xlabel('Separation (arcsec)')
     plt.ylabel(ylabel)
@@ -5067,15 +5084,30 @@ def plot_contrast_extended_source(path_table_star_flux, frame_I_Q, frame_I_U, fr
     plt.close()
     printandlog(os.path.join(path_pdi_figures_dir, plot_name), wrap=False)
 
+    # Save contrast curve in a csv file
+    csv_name = name_file_root + 'contrast_extended_source.csv'
+    printandlog('\nCreating csv contrast curve for the detection of extended sources.')
+    dico_contrast_extended_source = {'Separation [arcsec]':separation_as,\
+                                     'I_Q_mean ['+ylabel+']':I_Q_mean,\
+                                     'I_U_mean ['+ylabel+']':I_U_mean,\
+                                      '1sigma ' + label_Q:Q_std,\
+                                      '1sigma ' + label_U:U_std,\
+                                      'photon noise I_Q':photon_noise_I_Q,\
+                                      'photon noise I_U':photon_noise_I_U,\
+                                      'RON noise I_Q':ron_Q,'RON noise I_U':ron_U}
+    df_contrast_extended_source = pd.DataFrame(dico_contrast_extended_source)
+    df_contrast_extended_source.to_csv(os.path.join(path_pdi_figures_dir, csv_name),\
+                                       index=False)
+
 ###############################################################################
 # plot_contrast_point_source
 ###############################################################################
 
 def plot_contrast_point_source(path_table_star_flux, path_flux_left, path_flux_right, frame_I_Q,
                                frame_I_U, frame_Q, frame_U, filter_used, number_frames_Q,
-                               number_frames_U, QU_QUphi='QU', sigma_clip=True):
+                               number_frames_U,object_exposure_time, QU_QUphi='QU', sigma_clip=True):
     '''
-    Plot the contrast curve for a point source
+    Plot the contrast curve for a point source and save the result in a csv file
 
     Input:
         path_table_star_flux: path to CSV-file with star flux data
@@ -5100,6 +5132,10 @@ def plot_contrast_point_source(path_table_star_flux, path_flux_left, path_flux_r
     frame_I_U = frame_I_U * irdis_gain * number_frames_U
     frame_Q = frame_Q * irdis_gain * number_frames_Q
     frame_U = frame_U * irdis_gain * number_frames_U
+    
+    # Express the ron in total number of electrons per pixel
+    ron_Q_e_per_px = get_ron(object_exposure_time) * np.sqrt(number_frames_Q)
+    ron_U_e_per_px = get_ron(object_exposure_time) * np.sqrt(number_frames_U)
 
     # Compute mean and standard deviations as a function of separation
     separation, I_Q_mean, _, fwhm = compute_contrast(frame=frame_I_Q, filter_used=filter_used, sigma_clip=sigma_clip)
@@ -5159,6 +5195,10 @@ def plot_contrast_point_source(path_table_star_flux, path_flux_left, path_flux_r
     Q_std = Q_std / reference_flux_Q
     U_std = U_std / reference_flux_U
 
+    # Express RON as contrast per element of resolution
+    ron_Q = ron_Q_e_per_px * (np.sqrt(np.pi)*fwhm/2) / reference_flux_Q
+    ron_U = ron_U_e_per_px * (np.sqrt(np.pi)*fwhm/2) / reference_flux_U
+
     # Compute separation in arcseconds
     separation_as = separation * pixel_scale
 
@@ -5193,6 +5233,8 @@ def plot_contrast_point_source(path_table_star_flux, path_flux_left, path_flux_r
     plt.plot(separation_as, U_std, 'r-', label=r'$1\sigma$ ' + label_U)
     plt.plot(separation_as, photon_noise_I_Q, 'b:', label=r'photon noise $I_Q$')
     plt.plot(separation_as, photon_noise_I_U, 'r:', label=r'photon noise $I_U$')
+    plt.axhline(ron_Q,0,xlim_max,color='blue',linestyle='-.',label=r'RON noise $I_Q$')
+    plt.axhline(ron_U,0,xlim_max,color='red',linestyle='-.',label=r'RON noise $I_U$')
     plt.yscale('log')
     plt.xlabel('Separation (arcsec)')
     plt.ylabel('Point-source contrast')
@@ -5204,6 +5246,21 @@ def plot_contrast_point_source(path_table_star_flux, path_flux_left, path_flux_r
     plt.savefig(os.path.join(path_pdi_figures_dir, plot_name), dpi=300, bbox_inches='tight')
     plt.close()
     printandlog(os.path.join(path_pdi_figures_dir, plot_name), wrap=False)
+
+    # Save contrast curve in a csv file
+    csv_name = name_file_root + 'contrast_point_source.csv'
+    printandlog('\nCreating csv contrast curve for the detection of polarized point sources.')
+    dico_contrast_point_source = {'Separation [arcsec]':separation_as,\
+                                     'I_Q_mean [contrast]':I_Q_mean,\
+                                     'I_U_mean [contrast]':I_U_mean,\
+                                      '1sigma ' + label_Q:Q_std,\
+                                      '1sigma ' + label_U:U_std,\
+                                      'photon noise I_Q':photon_noise_I_Q,\
+                                      'photon noise I_U':photon_noise_I_U,\
+                                      'RON noise I_Q':ron_Q,'RON noise I_U':ron_U}
+    df_contrast_point_source = pd.DataFrame(dico_contrast_point_source)
+    df_contrast_point_source.to_csv(os.path.join(path_pdi_figures_dir, csv_name),\
+                                       index=False)
 
 ###############################################################################
 # apply_pdi
@@ -5432,6 +5489,10 @@ def apply_pdi(cube_left_frames,
     number_frames_Q = number_frames_QU[0]
     number_frames_U = number_frames_QU[1]
     printandlog('\nRead number of frames in Q and U from ' + path_number_frames + '.')
+
+    # Read DIT from .txt-file
+    path_dit = os.path.join(path_preprocessed_dir, name_file_root + 'DIT.txt')
+    object_exposure_time = literal_eval([x for x in open(path_dit, 'r')][0])
 
     # Compute normalized Stokes q and u, DoLP and AoLP in an annulus on the star
     q_star, u_star, sigma_q_star, sigma_u_star = \
@@ -5725,7 +5786,8 @@ def apply_pdi(cube_left_frames,
                                       frame_I_U_background_subtracted,
                                       frame_Q_phi_star_polarization_subtracted,
                                       frame_U_phi_star_polarization_subtracted,
-                                      filter_used, number_frames_Q, number_frames_U, QU_QUphi='QUphi',
+                                      filter_used, number_frames_Q, number_frames_U,
+                                      object_exposure_time,QU_QUphi='QUphi',
                                       sigma_clip=True, star_flux_in_jansky=None)
 
 
@@ -5735,7 +5797,8 @@ def apply_pdi(cube_left_frames,
                                    frame_I_U_background_subtracted,
                                    frame_Q_star_polarization_subtracted,
                                    frame_U_star_polarization_subtracted,
-                                   filter_used, number_frames_Q, number_frames_U, QU_QUphi='QU',
+                                   filter_used, number_frames_Q, number_frames_U,
+                                   object_exposure_time,QU_QUphi='QU',
                                    sigma_clip=True)
 
     else:
@@ -6416,6 +6479,44 @@ def create_overview_headers_main(path_main_dir):
                        path_overview.replace('.txt','.csv') + '.')
 
 ###############################################################################
+# compute the ron
+###############################################################################
+
+def get_ron(dit):
+    """
+    Return the ReadOut Noise of the IRDIS detector. This function was copied from 
+    the ETC system parameter document (ETC-system-param_NEW_2014-08-14.xls)
+    The IRDIS Read-out noise is 10 e- rms/pix/readout for a normal double correlated  
+    and can go down to 3 e- for non destructive sampling (as measured in lab)
+
+    Parameters
+    ----------
+    dit : float
+        Detector Integration Time.
+
+    Returns
+    -------
+    ron in e-
+
+    File written by Julien Milli
+    Function status: in dev
+    """
+    return 10.
+    # When using the nondest readout mode, the RON should normally be lower when 
+    # the integration time is larger, because several readouts are done 
+    # like on JWST. Therefore, the previous implementation of this function 
+    # was as follow. However, this did not match the contrast floor at large separations
+    # so this is probably not correct and a constant 10e- RON was found to 
+    # better match the observations.
+    #
+    # if dit<7:
+    #     return irdis_ron
+    # else:
+    #     min_dit = 0.84
+    #     return np.max([irdis_ron/np.sqrt((np.round(dit/min_dit,decimals=0)+1)/2),2.5])
+
+    
+###############################################################################
 # run_pipeline
 ###############################################################################
 
@@ -6452,6 +6553,7 @@ def run_pipeline(path_main_dir):
     global pixel_scale
     global msd
     global irdis_gain
+    global irdis_ron
     global path_raw_dir
     global path_flat_dir
     global path_bpm_dir
@@ -6490,6 +6592,8 @@ def run_pipeline(path_main_dir):
 
     # Define gain of IRDIS detector (e–/ADU) (SPHERE User Manual, 14th public release, P105 Phase 1)
     irdis_gain = 1.75
+    # Define gain of IRDIS detector (e–) (see also the function get_ron defined below)
+    irdis_ron = 10
 
     # Define paths of directories
     path_raw_dir = os.path.join(path_main_dir, 'raw')
