@@ -5984,6 +5984,9 @@ def apply_adi(cube_left_frames, cube_right_frames,header, principal_components='
         printandlog('\nWARNING, the total parallactic rotation is limited to {0:.1f} deg, which will result in severe self-subtraction.'.format(amplitude_parang_rotation))
     else:
         printandlog('\nThe total parallactic rotation is {0:.1f} deg.'.format(amplitude_parang_rotation))
+    write_fits_files(data=derotation_angle,
+                     path=os.path.join(path_adi_dir, name_file_root + 'derotation_angles.fits'),
+                     header=False)
 
     # Define strings to use in file names
     string_principal_components = '-'.join(map(str, principal_components))
@@ -6564,6 +6567,7 @@ def run_pipeline(path_main_dir):
     global path_pdi_no_subtr_dir
     global path_pdi_subtr_dir
     global path_pdi_figures_dir
+    global path_adi_dir
     global path_adi_classical_dir
     global path_adi_pca_dir
     global name_file_root
